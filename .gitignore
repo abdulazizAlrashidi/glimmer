@@ -1,0 +1,5 @@
+/target
+/dist
+/glimmer-data
+*.png.tmp
+.DS_Store

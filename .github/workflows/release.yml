@@ -1,0 +1,124 @@
+name: Release
+
+# Pushing a tag like v1.0.0 builds the game for macOS, Windows and Linux and
+# attaches the downloads to the GitHub release for that tag. If the release
+# doesn't exist yet, it's created as a draft so it can be reviewed first.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos
+            os: macos-latest
+          - name: windows
+            os: windows-latest
+          - name: linux
+            # Older Ubuntu = older glibc, so the binary runs on more distros.
+            os: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.name == 'macos' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Install Linux dependencies
+        if: matrix.name == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxi-dev libgl1-mesa-dev libasound2-dev
+
+      - name: Read version
+        shell: bash
+        run: echo "VERSION=$(grep -m1 '^version' Cargo.toml | cut -d '"' -f2)" >> "$GITHUB_ENV"
+
+      - name: Run tests
+        run: cargo test
+
+      - name: Build and package (macOS)
+        if: matrix.name == 'macos'
+        run: |
+          MACOSX_DEPLOYMENT_TARGET=11.0 cargo build --release --target aarch64-apple-darwin
+          MACOSX_DEPLOYMENT_TARGET=10.13 cargo build --release --target x86_64-apple-darwin
+
+          APP=dist/Glimmer.app
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          lipo -create -output "$APP/Contents/MacOS/glimmer" \
+            target/aarch64-apple-darwin/release/glimmer \
+            target/x86_64-apple-darwin/release/glimmer
+          cp packaging/macos/Info.plist "$APP/Contents/Info.plist"
+          cp packaging/macos/Glimmer.icns "$APP/Contents/Resources/Glimmer.icns"
+          /usr/libexec/PlistBuddy \
+            -c "Set :CFBundleShortVersionString $VERSION" \
+            -c "Set :CFBundleVersion $VERSION" \
+            "$APP/Contents/Info.plist"
+          # Ad-hoc signature. Not notarized, but without any signature Apple
+          # Silicon Macs report the app as "damaged".
+          codesign --force --deep --sign - "$APP"
+
+          cd dist
+          ditto -c -k --keepParent Glimmer.app "glimmer-$VERSION-macos.zip"
+
+      - name: Build and package (Windows)
+        if: matrix.name == 'windows'
+        shell: bash
+        run: |
+          cargo build --release
+          mkdir -p dist/Glimmer
+          cp target/release/glimmer.exe README.md LICENSE THIRD_PARTY_NOTICES.md dist/Glimmer/
+          cd dist
+          7z a "glimmer-$VERSION-windows-x64.zip" Glimmer
+
+      - name: Build and package (Linux)
+        if: matrix.name == 'linux'
+        run: |
+          cargo build --release
+          mkdir -p "dist/glimmer-$VERSION"
+          cp target/release/glimmer README.md LICENSE THIRD_PARTY_NOTICES.md "dist/glimmer-$VERSION/"
+          tar -C dist -czf "dist/glimmer-$VERSION-linux-x64.tar.gz" "glimmer-$VERSION"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: glimmer-${{ matrix.name }}
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: Publish downloads
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: glimmer-*
+          path: dist
+          merge-multiple: true
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$TAG" * --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" * --draft --title "Glimmer ${TAG#v}" --generate-notes --repo "$GITHUB_REPOSITORY"
+          fi

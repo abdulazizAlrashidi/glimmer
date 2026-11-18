@@ -1,0 +1,33 @@
+[package]
+name = "glimmer"
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.88"
+authors = ["Abdulaziz Alrashidi"]
+description = "A neon maze-chase arcade game. Everything (graphics, font, sound and music) is generated in code, so it runs fully offline."
+repository = "https://github.com/abdulazizAlrashidi/glimmer"
+license = "MIT"
+readme = "README.md"
+keywords = ["game", "arcade", "maze", "macroquad", "offline"]
+categories = ["games"]
+publish = false
+default-run = "glimmer"
+
+[dependencies]
+macroquad = { version = "=0.4.16", default-features = false, features = ["audio"] }
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+
+# Lower-latency CoreAudio output for macOS (see third_party/quad-snd/GLIMMER_PATCH.md).
+[patch.crates-io]
+quad-snd = { path = "third_party/quad-snd" }
