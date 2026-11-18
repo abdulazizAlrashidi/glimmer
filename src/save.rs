@@ -826,11 +826,15 @@ mod tests {
         let win = resolve_data_dir(Platform::Windows, env_of(&[("APPDATA", "/appdata")]));
         assert_eq!(win, PathBuf::from("/appdata").join("Glimmer"));
 
+        // "/xdg" isn't an absolute path on Windows (no drive letter), and
+        // relative XDG paths are ignored, so use one that is absolute on the
+        // machine running the tests.
+        let xdg_root = if cfg!(windows) { r"C:\xdg" } else { "/xdg" };
         let xdg = resolve_data_dir(
             Platform::OtherUnix,
-            env_of(&[("XDG_DATA_HOME", "/xdg"), ("HOME", "/home/u")]),
+            env_of(&[("XDG_DATA_HOME", xdg_root), ("HOME", "/home/u")]),
         );
-        assert_eq!(xdg, PathBuf::from("/xdg").join("glimmer"));
+        assert_eq!(xdg, PathBuf::from(xdg_root).join("glimmer"));
 
         let unix = resolve_data_dir(Platform::OtherUnix, env_of(&[("HOME", "/home/u")]));
         assert_eq!(unix, home.join(".local").join("share").join("glimmer"));
