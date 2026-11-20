@@ -2844,7 +2844,7 @@ mod tests {
     }
 
     #[test]
-    fn sfx_durations_match_the_brief() {
+    fn sfx_durations_are_in_range() {
         let len = |s: Sfx| secs(&render_sfx(s));
         let intro = len(Sfx::Intro);
         assert!((3.5..=4.0).contains(&intro), "intro {intro}");
@@ -2923,7 +2923,7 @@ mod tests {
     }
 
     #[test]
-    fn track_lengths_match_the_brief() {
+    fn track_lengths_are_in_range() {
         let hums = [Track::Hum0, Track::Hum1, Track::Hum2, Track::Hum3];
         for (stage, t) in hums.into_iter().enumerate() {
             let s = secs(&render_track(t));
@@ -2982,7 +2982,7 @@ mod tests {
     }
 
     #[test]
-    fn interlude_seam_is_seamless() {
+    fn interlude_loop_has_no_click_at_the_seam() {
         let x = render_track(Track::Interlude);
         let n = x.len();
         // The canvas wraps tails over the loop point, so playing the buffer
